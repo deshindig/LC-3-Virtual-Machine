@@ -40,6 +40,14 @@ int mem_write(uint16_t address, uint16_t word) {
     return 1;
 }
 
+int set_cc(uint16_t result) {
+    if (result == 0) {
+        COND = FLAG_Z;
+    } else {
+        COND = result & 0x8000 == 0? FLAG_P: FLAG_N;
+    }
+}
+
 int main(int argc, char *argv[]) {
     const PC_START = 0x3000;
     PC = PC_START;
@@ -59,9 +67,13 @@ int main(int argc, char *argv[]) {
                     operand2 = reg[SR2];
                 } else {
                     operand2 = IR & 0x001f;
+                    struct {signed int x: 5} s;
+                    operand2 = s.x = operand2; // sign extension
                 }
                 uint16_t DR = IR & 0x0e00 >> 9;
-                reg[DR] = operand1 + operand2;
+                uint16_t result = operand1 + operand2;
+                reg[DR] = result;
+                set_cc(result);
                 break;
             case OP_AND:
                 uint16_t SR1 = IR & 0x01c0 >> 6;
@@ -73,17 +85,24 @@ int main(int argc, char *argv[]) {
                     operand2 = reg[SR2];
                 } else {
                     operand2 = IR & 0x001f;
+                    struct {signed int x: 5} s;
+                    operand2 = s.x = operand2; // sign extension
                 }
                 uint16_t DR = IR & 0x0e00 >> 9;
-                reg[DR] = operand1 & operand2;
+                uint16_t result = operand1 & operand2;
+                reg[DR] = result;
+                set_cc(result);
                 break;
             case OP_NOT:
                 uint16_t SR = IR & 0x01c0 >> 6;
                 uint16_t DR = IR & 0x0e00 >> 9;
                 uint16_t operand = reg[SR];
-                reg[DR] = ~operand;
+                uint16_t result = ~operand;
+                reg[DR] = result;
+                set_cc(result);
                 break;
             case OP_BR:
+                
                 break;
             case OP_JMP:
                 break;
