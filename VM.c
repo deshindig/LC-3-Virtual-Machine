@@ -49,8 +49,8 @@ int set_cc(uint16_t result) {
 }
 
 int main(int argc, char *argv[]) {
-    const PC_START = 0x3000;
-    PC = PC_START;
+    const ORIG = 0x3000;
+    PC = ORIG;
 
     while (1) {
         IR = mem_read(PC++);
@@ -102,9 +102,18 @@ int main(int argc, char *argv[]) {
                 set_cc(result);
                 break;
             case OP_BR:
-                
+                uint16_t nzp = IR & 0x0e00 >> 9;
+                if (nzp == FLAG_N && COND == FLAG_N
+                        || nzp == FLAG_Z && COND == FLAG_Z
+                            || nzp == FLAG_P && COND == FLAG_P) {
+                    uint16_t PCoffset = IR & 0x01ff;
+                    struct {signed int x: 9} s;
+                    PCoffset = s.x = operand2; // sign extension
+                }
                 break;
             case OP_JMP:
+                uint16_t BR = IR & 0x01c0 >> 6;
+                PC = reg[BR];
                 break;
             case OP_JSR:
                 break;
