@@ -20,155 +20,161 @@ const unsigned int OPCODE_RES = 0xd;
 const unsigned int OPCODE_LEA = 0xe;
 const unsigned int OPCODE_TRAP = 0xf;
 
-/* condition register flags */
+/* Condition register flags */
 const unsigned int FLAG_N = 0x1 << 2;
 const unsigned int FLAG_Z = 0x1 << 1;
 const unsigned int FLAG_P = 0x1 << 0;
 
-uint16_t mem[UINT16_MAX];
-uint16_t reg[8];    // 8 general purpose registers, R0 to R7
-uint16_t pc;        // Program Counter register
-uint16_t ir;        // Instruction Register
-uint16_t cond;      // Condition register
+typedef struct lc3_state {
+    uint16_t mem[UINT16_MAX];
+    uint16_t reg[8];    // 8 general purpose registers, R0 to R7
+    uint16_t pc;        // Program Counter register
+    uint16_t ir;        // Instruction Register
+    uint16_t cond;      // Condition register
+} lc3_state;
 
-uint16_t mem_read(uint16_t address) {
-    return mem[address];
+uint16_t mem_read(uint16_t address, lc3_state *state) {
+    return state->mem[address];
 }
 
-void mem_write(uint16_t address, uint16_t word) {
-    mem[address] = word;
+void mem_write(uint16_t address, uint16_t word, lc3_state *state) {
+    state->mem[address] = word;
 }
 
-void set_cc(uint16_t result) {
+void set_cc(uint16_t result, lc3_state *state) {
     if (result == 0) {
-        cond = FLAG_Z;
+        state->cond = FLAG_Z;
     } else {
-        cond = result & 0x8000 == 0? FLAG_P: FLAG_N;
+        state->cond = result & 0x8000 == 0? FLAG_P: FLAG_N;
     }
 }
 
-uint16_t sext(uint16_t value, int bitlen) {
+uint16_t sext16(uint16_t value, int bitlen) {
     return 0;
 }
 
 int main(int argc, char *argv[]) {
+    lc3_state *state = malloc(sizeof(lc3_state));
     const ORIG = 0x3000;
-    pc = ORIG;
+    state->pc = ORIG;
 
     while (1) {
-        ir = mem_read(pc++);
-        uint16_t opcode = ir >> 12;
+        state->ir = mem_read(state->pc++, state);
+        uint16_t opcode = state->ir >> 12;
 
         switch (opcode) {
             case OPCODE_ADD:
-                uint16_t sr1 = (ir >> 6) & 0x7;
-                uint16_t imm_mode = (ir >> 5) & 0x1;
+                uint16_t sr1 = (state->ir >> 6) & 0x7;
+                uint16_t imm_mode = (state->ir >> 5) & 0x1;
                 uint16_t result;
                 if (imm_mode == 1) {
                     uint16_t imm = 0x001f;
-                    result = reg[sr1] + sext(imm, 5);
+                    result = state->reg[sr1] + sext16(imm, 5);
                 } else {
-                    uint16_t sr2 = ir & 0x0007;
-                    result = reg[sr1] + reg[sr2];
+                    uint16_t sr2 = state->ir & 0x0007;
+                    result = state->reg[sr1] + state->reg[sr2];
                 }
-                uint16_t dr = (ir >> 9) & 0x7;
-                reg[dr] = result;
-                set_cc(result);
+                uint16_t dr = (state->ir >> 9) & 0x7;
+                state->reg[dr] = result;
+                set_cc(result, state);
                 break;
             case OPCODE_AND:
-                uint16_t sr1 = (ir >> 6) & 0x7;
-                uint16_t imm_mode = (ir >> 5) & 0x1;
+                uint16_t sr1 = (state->ir >> 6) & 0x7;
+                uint16_t imm_mode = (state->ir >> 5) & 0x1;
                 uint16_t result;
                 if (imm_mode == 1) {
                     uint16_t imm = 0x001f;
-                    result = reg[sr1] & sext(imm, 5);
+                    result = state->reg[sr1] & sext16(imm, 5);
                 } else {
-                    uint16_t sr2 = ir & 0x7;
-                    result = reg[sr1] & reg[sr2];
+                    uint16_t sr2 = state->ir & 0x7;
+                    result = state->reg[sr1] & state->reg[sr2];
                 }
-                uint16_t dr = (ir >> 9) & 0x7;
-                reg[dr] = result;
-                set_cc(result);
+                uint16_t dr = (state->ir >> 9) & 0x7;
+                state->reg[dr] = result;
+                set_cc(result, state);
                 break;
             case OPCODE_NOT:
-                uint16_t sr = (ir >> 6) & 0x7;
-                uint16_t dr = (ir >> 9) & 0x7;
-                uint16_t result = ~reg[sr];
-                reg[dr] = result;
-                set_cc(result);
+                uint16_t sr = (state->ir >> 6) & 0x7;
+                uint16_t dr = (state->ir >> 9) & 0x7;
+                uint16_t result = ~state->reg[sr];
+                state->reg[dr] = result;
+                set_cc(result, state);
                 break;
             case OPCODE_BR:
-                uint16_t nzp = (ir >> 9) & 0x7;
-                if (nzp != 0 && nzp == cond) {
-                    uint16_t pc_offset = sext(ir & 0x01ff, 9);
-                    pc += pc_offset;
+                uint16_t nzp = (state->ir >> 9) & 0x7;
+                if (nzp != 0 && nzp == state->cond) {
+                    uint16_t pc_offset = sext16(state->ir & 0x01ff, 9);
+                    state->pc += pc_offset;
                 }
                 break;
             case OPCODE_JMP:
-                uint16_t base_r = (ir >> 6) & 0x7;
-                pc = reg[base_r];
+                uint16_t base_r = (state->ir >> 6) & 0x7;
+                state->pc = state->reg[base_r];
                 break;
             case OPCODE_JSR:
-                reg[7] = pc;
-                uint16_t imm_mode = (ir >> 11) & 0x1;
+                state->reg[7] = state->pc;
+                uint16_t imm_mode = (state->ir >> 11) & 0x1;
                 if (imm_mode == 1) {
-                    uint16_t pc_offset = sext(ir & 0x07ff, 9);
-                    pc += pc_offset;
+                    uint16_t pc_offset = sext16(state->ir & 0x07ff, 9);
+                    state->pc += pc_offset;
                 } else {
-                    uint16_t base_r = (ir >> 6) & 0x7;
-                    pc = reg[base_r];
+                    uint16_t base_r = (state->ir >> 6) & 0x7;
+                    state->pc = state->reg[base_r];
                 }
                 break;
             case OPCODE_LD:
-                uint16_t dr = (ir >> 9) & 0x7;
-                uint16_t pc_offset = sext(ir & 0x01ff, 9);
-                uint16_t result = mem_read(pc + pc_offset);
-                reg[dr] = result;
-                set_cc(result);
+                uint16_t dr = (state->ir >> 9) & 0x7;
+                uint16_t pc_offset = sext16(state->ir & 0x01ff, 9);
+                uint16_t result = mem_read(state->pc + pc_offset, state);
+                state->reg[dr] = result;
+                set_cc(result, state);
                 break;
             case OPCODE_LDI:
-                uint16_t dr = (ir >> 9) & 0x7;
-                uint16_t pc_offset = sext(ir & 0x01ff, 9);
-                uint16_t result = mem_read(mem_read(pc + pc_offset));
-                reg[dr] = result;
-                set_cc(result);
+                uint16_t dr = (state->ir >> 9) & 0x7;
+                uint16_t pc_offset = sext16(state->ir & 0x01ff, 9);
+                uint16_t result = mem_read(state->pc + pc_offset, state);
+                result = mem_read(result, state);
+                state->reg[dr] = result;
+                set_cc(result, state);
                 break;
             case OPCODE_LDR:
-                uint16_t base_r = (ir >> 6) & 0x7;
-                uint16_t dr = (ir >> 9) & 0x7;
-                uint16_t pc_offset = sext(ir & 0x003f, 6);
-                uint16_t result = mem_read(reg[base_r] + pc_offset);
-                reg[dr] = result;
-                set_cc(result);
+                uint16_t base_r = (state->ir >> 6) & 0x7;
+                uint16_t dr = (state->ir >> 9) & 0x7;
+                uint16_t offset = sext16(state->ir & 0x003f, 6);
+                uint16_t result = mem_read(state->reg[base_r] + offset, state);
+                state->reg[dr] = result;
+                set_cc(result, state);
                 break;
             case OPCODE_LEA:
-                uint16_t dr = (ir >> 9) & 0x7;
-                uint16_t pc_offset = sext(ir & 0x01ff, 9);
-                uint16_t result = pc + pc_offset;
-                reg[dr] = result;
-                set_cc(result);
+                uint16_t dr = (state->ir >> 9) & 0x7;
+                uint16_t pc_offset = sext16(state->ir & 0x01ff, 9);
+                uint16_t result = state->pc + pc_offset;
+                state->reg[dr] = result;
+                set_cc(result, state);
                 break;
             case OPCODE_ST:
-                uint16_t sr = (ir >> 9) & 0x7;
-                uint16_t pc_offset = sext(ir & 0x01ff, 9);
-                uint16_t write_to = pc + pc_offset;
-                mem_write(write_to, reg[sr]);
+                uint16_t sr = (state->ir >> 9) & 0x7;
+                uint16_t pc_offset = sext16(state->ir & 0x01ff, 9);
+                uint16_t write_to = state->pc + pc_offset;
+                mem_write(write_to, state->reg[sr], state);
                 break;
             case OPCODE_STI:
-                uint16_t sr = (ir >> 9) & 0x7;
-                uint16_t pc_offset = sext(ir & 0x01ff, 9);
-                mem_write(mem_read(pc + pc_offset), reg[sr]);
+                uint16_t sr = (state->ir >> 9) & 0x7;
+                uint16_t pc_offset = sext16(state->ir & 0x01ff, 9);
+                uint16_t write_to = mem_read(state->pc + pc_offset, state);
+                mem_write(write_to, state->reg[sr], state);
                 break;
             case OPCODE_STR:
-                uint16_t base_r = (ir >> 6) & 0x7;
-                uint16_t sr = (ir >> 9) & 0x7;
-                uint16_t pc_offset = sext(ir & 0x003f, 6);
-                mem_write(reg[base_r] + pc_offset, reg[sr]);
+                uint16_t base_r = (state->ir >> 6) & 0x7;
+                uint16_t sr = (state->ir >> 9) & 0x7;
+                uint16_t offset = sext16(state->ir & 0x003f, 6);
+                uint16_t write_to = state->reg[base_r] + offset;
+                mem_write(write_to, state->reg[sr], state);
                 break;
             case OPCODE_TRAP:
-                uint16_t trapvect = ir & 0x00ff;
-                reg[7] = pc;
-                pc = mem_read(trapvect);
+                uint16_t trapvect = state->ir & 0x00ff;
+                state->reg[7] = state->pc;
+                state->pc = mem_read(trapvect, state);
                 break;
             case OPCODE_RES:
                 printf("bad opcode");
